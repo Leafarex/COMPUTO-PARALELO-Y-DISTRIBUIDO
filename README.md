@@ -1,0 +1,2 @@
+# COMPUTO-PARALELO-Y-DISTRIBUIDO
+contenido de la materia COMPUTO PARALELO Y DISTRIBUIDO por Rafael Negrte Leyva 35322 
