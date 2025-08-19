@@ -8,93 +8,96 @@
 
 class RandomSumTask {
 public:
-    RandomSumTask(int count, int min_v, int max_v)
-        : count_(count), min_(min_v), max_(max_v) {
-        numbers_.reserve(count_);
+    RandomSumTask(int numbersToGenerateParam, int randomMinInclusiveParam, int randomMaxInclusiveParam)
+        : numbersToGenerate(numbersToGenerateParam),
+          randomMinInclusive(randomMinInclusiveParam),
+          randomMaxInclusive(randomMaxInclusiveParam) {
+        generatedNumbers.reserve(numbersToGenerate);
     }
 
-    // Genera 'count_' números aleatorios en [min_, max_] y calcula la suma.
+    // Genera 'numbersToGenerate' números aleatorios en [randomMinInclusive, randomMaxInclusive] y calcula la suma.
     void run() {
-        numbers_.clear();
-        sum_ = 0;
+        generatedNumbers.clear();
+        sumOfNumbers = 0;
 
-        std::random_device rd;
-        auto seed = static_cast<std::mt19937::result_type>(
-            rd() ^
+        std::random_device randomDevice;
+        auto rngSeed = static_cast<std::mt19937::result_type>(
+            randomDevice() ^
             std::hash<std::thread::id>{}(std::this_thread::get_id()) ^
             static_cast<uint64_t>(
                 std::chrono::high_resolution_clock::now().time_since_epoch().count()
             )
         );
-        std::mt19937 gen(seed);
-        std::uniform_int_distribution<int> dist(min_, max_);
+        std::mt19937 rngEngine(rngSeed);
+        std::uniform_int_distribution<int> distribution(randomMinInclusive, randomMaxInclusive);
 
-        for (int i = 0; i < count_; ++i) {
-            int r = dist(gen);
-            numbers_.push_back(r);
-            sum_ += r;
+        for (int valueIndex = 0; valueIndex < numbersToGenerate; ++valueIndex) {
+            int randomValue = distribution(rngEngine);
+            generatedNumbers.push_back(randomValue);
+            sumOfNumbers += randomValue;
         }
     }
 
-    unsigned long long sum() const { return sum_; }
-    const std::vector<int>& numbers() const { return numbers_; }
+    unsigned long long getSum() const { return sumOfNumbers; }
+    const std::vector<int>& getGeneratedNumbers() const { return generatedNumbers; }
 
 private:
-    int count_;
-    int min_, max_;
-    std::vector<int> numbers_;
-    unsigned long long sum_ = 0;
+    int numbersToGenerate;
+    int randomMinInclusive, randomMaxInclusive;
+    std::vector<int> generatedNumbers;
+    unsigned long long sumOfNumbers = 0;
 };
 
 int main() {
-    constexpr int kNumThreads = 10;
-    constexpr int kNumsPerThread = 100;
-    constexpr int kMin = 1;
-    constexpr int kMax = 1000;
+    constexpr int kThreadsCount = 10;
+    constexpr int kNumbersPerThread = 100;
+    constexpr int kRandomMinInclusive = 1;
+    constexpr int kRandomMaxInclusive = 1000;
 
     // Tareas (una por thread)
-    std::vector<RandomSumTask> tasks;
-    tasks.reserve(kNumThreads);
-    for (int i = 0; i < kNumThreads; ++i) {
-        tasks.emplace_back(kNumsPerThread, kMin, kMax);
+    std::vector<RandomSumTask> workerTasks;
+    workerTasks.reserve(kThreadsCount);
+    for (int threadIndex = 0; threadIndex < kThreadsCount; ++threadIndex) {
+        workerTasks.emplace_back(kNumbersPerThread, kRandomMinInclusive, kRandomMaxInclusive);
     }
 
-    std::vector<std::thread> threads;
-    threads.reserve(kNumThreads);
-    std::vector<std::thread::id> ids(kNumThreads);
+    std::vector<std::thread> workerThreads;
+    workerThreads.reserve(kThreadsCount);
+    std::vector<std::thread::id> workerThreadIds(kThreadsCount);
 
-    for (int i = 0; i < kNumThreads; ++i) {
-        threads.emplace_back([i, &tasks, &ids]() {
-            tasks[i].run();
-            ids[i] = std::this_thread::get_id();
+    for (int threadIndex = 0; threadIndex < kThreadsCount; ++threadIndex) {
+        workerThreads.emplace_back([threadIndex, &workerTasks, &workerThreadIds]() {
+            workerTasks[threadIndex].run();
+            workerThreadIds[threadIndex] = std::this_thread::get_id();
         });
     }
-    for (auto& t : threads) t.join();
+    for (auto& threadObj : workerThreads) threadObj.join();
 
     // Imprimir resultados
-    for (int i = 0; i < kNumThreads; ++i) {
-        std::cout << "Thread " << i
-                  << " (id " << ids[i] << ") -> suma = "
-                  << tasks[i].sum() << ", numeros aleatorios = (";
-        const auto& vec = tasks[i].numbers();
-        for (size_t j = 0; j < vec.size(); ++j) {
-            std::cout << vec[j] << (j + 1 < vec.size() ? ", " : "");
+    for (int threadIndex = 0; threadIndex < kThreadsCount; ++threadIndex) {
+        std::cout << "Thread " << threadIndex
+                  << " (id " << workerThreadIds[threadIndex] << ") -> suma = "
+                  << workerTasks[threadIndex].getSum() << ", numeros aleatorios = (";
+        const auto& numbersInThread = workerTasks[threadIndex].getGeneratedNumbers();
+        for (size_t valueIndex = 0; valueIndex < numbersInThread.size(); ++valueIndex) {
+            std::cout << numbersInThread[valueIndex]
+                      << (valueIndex + 1 < numbersInThread.size() ? ", " : "");
         }
         std::cout << ")\n";
     }
 
     // Thread con mayor suma
-    int idx_max = static_cast<int>(std::distance(
-        tasks.begin(),
-        std::max_element(tasks.begin(), tasks.end(),
-                         [](const RandomSumTask& a, const RandomSumTask& b) {
-                             return a.sum() < b.sum();
+    int indexOfMaxSum = static_cast<int>(std::distance(
+        workerTasks.begin(),
+        std::max_element(workerTasks.begin(), workerTasks.end(),
+                         [](const RandomSumTask& left, const RandomSumTask& right) {
+                             return left.getSum() < right.getSum();
                          })
     ));
 
-    std::cout << "\nEl thread con puntuacion mas alta es el " << idx_max
-              << " (id " << ids[idx_max] << ") con suma = "
-              << tasks[idx_max].sum() << ".\n";
+    std::cout << "\nEl thread con puntuacion mas alta es el " << indexOfMaxSum
+              << " (id " << workerThreadIds[indexOfMaxSum] << ") con suma = "
+              << workerTasks[indexOfMaxSum].getSum() << ".\n";
 
     return 0;
 }
